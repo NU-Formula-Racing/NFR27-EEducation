@@ -42,8 +42,12 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined library search paths
 )
 
+# Glob lab sources
+file(GLOB_RECURSE LAB_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/Labs/*.c
+)
+
 # Add sources to executable
-file(GLOB LAB_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/Labs/Src/*.c)
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     ${LAB_SOURCES}
@@ -52,7 +56,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
-    Labs/Inc
+    ./Labs/Lab_1/
 )
 
 # Add project symbols (macros)
