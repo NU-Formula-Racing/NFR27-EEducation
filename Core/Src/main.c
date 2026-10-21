@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "labs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -107,7 +108,7 @@ int main(void) {
   MX_USB_DRD_FS_PCD_Init();
   MX_ICACHE_Init();
   /* USER CODE BEGIN 2 */
-
+  start_labs();
   /* USER CODE END 2 */
 
   /* Infinite loop */

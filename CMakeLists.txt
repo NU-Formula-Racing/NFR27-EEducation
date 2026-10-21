@@ -15,7 +15,7 @@ set(CMAKE_C_EXTENSIONS ON)
 
 # Define the build type
 if(NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Debug")
+  set(CMAKE_BUILD_TYPE "Debug")
 endif()
 
 # Set the project name
@@ -43,13 +43,16 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 )
 
 # Add sources to executable
+file(GLOB LAB_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/Labs/Src/*.c)
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    ${LAB_SOURCES}
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    Labs/Inc
 )
 
 # Add project symbols (macros)
