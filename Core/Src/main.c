@@ -18,10 +18,12 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "labs.h"
+#include "app_usbx.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include "test.h"
 
 /* USER CODE END Includes */
 
@@ -51,6 +53,7 @@ SPI_HandleTypeDef hspi1;
 PCD_HandleTypeDef hpcd_USB_DRD_FS;
 
 /* USER CODE BEGIN PV */
+static volatile uint8_t usb_started;
 
 /* USER CODE END PV */
 
@@ -69,14 +72,37 @@ static void MX_ICACHE_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+/* printf -> USB virtual COM port. Drops output if no terminal is open. */
+int _write(int file, char *ptr, int len) {
+  ULONG sent;
+  uint32_t start = HAL_GetTick();
+  (void)file;
+
+  if (cdc_acm == UX_NULL || !cdc_acm->ux_slave_class_cdc_acm_data_dtr_state) {
+    return len;
+  }
+  while (HAL_GetTick() - start < 50) {
+    ux_system_tasks_run();
+    UINT state = ux_device_class_cdc_acm_write_run(cdc_acm, (UCHAR *)ptr, len, &sent);
+    if (state == UX_STATE_NEXT || state < UX_STATE_WAIT) {
+      return len;
+    }
+  }
+  /* Host stopped reading: cancel so the next write starts clean */
+  ux_device_class_cdc_acm_ioctl(cdc_acm, UX_SLAVE_CLASS_CDC_ACM_IOCTL_ABORT_PIPE,
+                                (VOID *)UX_SLAVE_CLASS_CDC_ACM_ENDPOINT_XMIT);
+  cdc_acm->ux_device_class_cdc_acm_write_state = UX_STATE_RESET;
+  return len;
+}
 
 /* USER CODE END 0 */
 
 /**
- * @brief  The application entry point.
- * @retval int
- */
-int main(void) {
+  * @brief  The application entry point.
+  * @retval int
+  */
+int main(void)
+{
 
   /* USER CODE BEGIN 1 */
 
@@ -84,8 +110,7 @@ int main(void) {
 
   /* MCU Configuration--------------------------------------------------------*/
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick.
-   */
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
 
   /* USER CODE BEGIN Init */
@@ -107,13 +132,40 @@ int main(void) {
   MX_SPI1_Init();
   MX_USB_DRD_FS_PCD_Init();
   MX_ICACHE_Init();
+  MX_USBX_Init();
   /* USER CODE BEGIN 2 */
-  start_labs();
+  /* Trim HSI48 to the host's USB SOF; USB needs a tighter clock than HSI48 alone */
+  RCC_CRSInitTypeDef crs = {
+      .Prescaler = RCC_CRS_SYNC_DIV1,
+      .Source = RCC_CRS_SYNC_SOURCE_USB,
+      .Polarity = RCC_CRS_SYNC_POLARITY_RISING,
+      .ReloadValue = __HAL_RCC_CRS_RELOADVALUE_CALCULATE(48000000, 1000),
+      .ErrorLimitValue = RCC_CRS_ERRORLIMIT_DEFAULT,
+      .HSI48CalibrationValue = RCC_CRS_HSI48CALIBRATION_DEFAULT,
+  };
+  __HAL_RCC_CRS_CLK_ENABLE();
+  HAL_RCCEx_CRSConfig(&crs);
+
+  /* USB packet memory per endpoint (BTABLE uses 0x00-0x3F) */
+  HAL_PCDEx_PMAConfig(&hpcd_USB_DRD_FS, 0x00, PCD_SNG_BUF, 0x40);
+  HAL_PCDEx_PMAConfig(&hpcd_USB_DRD_FS, 0x80, PCD_SNG_BUF, 0x80);
+  HAL_PCDEx_PMAConfig(&hpcd_USB_DRD_FS, USBD_CDCACM_EPINCMD_ADDR, PCD_SNG_BUF, 0xC0);
+  HAL_PCDEx_PMAConfig(&hpcd_USB_DRD_FS, USBD_CDCACM_EPOUT_ADDR, PCD_SNG_BUF, 0x100);
+  HAL_PCDEx_PMAConfig(&hpcd_USB_DRD_FS, USBD_CDCACM_EPIN_ADDR, PCD_SNG_BUF, 0x140);
+
+  /* Hand the USB peripheral to USBX and connect to the host */
+  ux_dcd_stm32_initialize((ULONG)USB_DRD_FS, (ULONG)&hpcd_USB_DRD_FS);
+  HAL_PCD_Start(&hpcd_USB_DRD_FS);
+  usb_started = 1;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1) {
+    test_imu();
+    test_adc();
+    test_can();
+    test_led(); /* toggles the LED, then waits 500 ms */
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -122,23 +174,24 @@ int main(void) {
 }
 
 /**
- * @brief System Clock Configuration
- * @retval None
- */
-void SystemClock_Config(void) {
+  * @brief System Clock Configuration
+  * @retval None
+  */
+void SystemClock_Config(void)
+{
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   /** Configure the main internal regulator output voltage
-   */
-  if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE3) != HAL_OK) {
+  */
+  if (HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE3) != HAL_OK)
+  {
     Error_Handler();
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-   */
-  RCC_OscInitStruct.OscillatorType =
-      RCC_OSCILLATORTYPE_HSI48 | RCC_OSCILLATORTYPE_MSI;
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_MSI;
   RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
   RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
@@ -153,32 +206,35 @@ void SystemClock_Config(void) {
   RCC_OscInitStruct.PLL.PLLR = 2;
   RCC_OscInitStruct.PLL.PLLRGE = RCC_PLLVCIRANGE_1;
   RCC_OscInitStruct.PLL.PLLFRACN = 0;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
     Error_Handler();
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
-   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
-                                RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2 |
-                                RCC_CLOCKTYPE_PCLK3;
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
+                              |RCC_CLOCKTYPE_PCLK3;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB3CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK) {
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  {
     Error_Handler();
   }
 }
 
 /**
- * @brief FDCAN1 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_FDCAN1_Init(void) {
+  * @brief FDCAN1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_FDCAN1_Init(void)
+{
 
   /* USER CODE BEGIN FDCAN1_Init 0 */
 
@@ -205,20 +261,23 @@ static void MX_FDCAN1_Init(void) {
   hfdcan1.Init.StdFiltersNbr = 0;
   hfdcan1.Init.ExtFiltersNbr = 0;
   hfdcan1.Init.TxFifoQueueMode = FDCAN_TX_FIFO_OPERATION;
-  if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK) {
+  if (HAL_FDCAN_Init(&hfdcan1) != HAL_OK)
+  {
     Error_Handler();
   }
   /* USER CODE BEGIN FDCAN1_Init 2 */
 
   /* USER CODE END FDCAN1_Init 2 */
+
 }
 
 /**
- * @brief FLASH Initialization Function
- * @param None
- * @retval None
- */
-static void MX_FLASH_Init(void) {
+  * @brief FLASH Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_FLASH_Init(void)
+{
 
   /* USER CODE BEGIN FLASH_Init 0 */
 
@@ -227,23 +286,27 @@ static void MX_FLASH_Init(void) {
   /* USER CODE BEGIN FLASH_Init 1 */
 
   /* USER CODE END FLASH_Init 1 */
-  if (HAL_FLASH_Unlock() != HAL_OK) {
+  if (HAL_FLASH_Unlock() != HAL_OK)
+  {
     Error_Handler();
   }
-  if (HAL_FLASH_Lock() != HAL_OK) {
+  if (HAL_FLASH_Lock() != HAL_OK)
+  {
     Error_Handler();
   }
   /* USER CODE BEGIN FLASH_Init 2 */
 
   /* USER CODE END FLASH_Init 2 */
+
 }
 
 /**
- * @brief I2C1 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_I2C1_SMBUS_Init(void) {
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_SMBUS_Init(void)
+{
 
   /* USER CODE BEGIN I2C1_Init 0 */
 
@@ -265,32 +328,37 @@ static void MX_I2C1_SMBUS_Init(void) {
   hsmbus1.Init.PacketErrorCheckMode = SMBUS_PEC_DISABLE;
   hsmbus1.Init.PeripheralMode = SMBUS_PERIPHERAL_MODE_SMBUS_SLAVE;
   hsmbus1.Init.SMBusTimeout = 0x00008249;
-  if (HAL_SMBUS_Init(&hsmbus1) != HAL_OK) {
+  if (HAL_SMBUS_Init(&hsmbus1) != HAL_OK)
+  {
     Error_Handler();
   }
 
   /** configuration Alert Mode
-   */
-  if (HAL_SMBUS_EnableAlert_IT(&hsmbus1) != HAL_OK) {
+  */
+  if (HAL_SMBUS_EnableAlert_IT(&hsmbus1) != HAL_OK)
+  {
     Error_Handler();
   }
 
   /** Configure Digital filter
-   */
-  if (HAL_SMBUS_ConfigDigitalFilter(&hsmbus1, 0) != HAL_OK) {
+  */
+  if (HAL_SMBUS_ConfigDigitalFilter(&hsmbus1, 0) != HAL_OK)
+  {
     Error_Handler();
   }
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
+
 }
 
 /**
- * @brief ICACHE Initialization Function
- * @param None
- * @retval None
- */
-static void MX_ICACHE_Init(void) {
+  * @brief ICACHE Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ICACHE_Init(void)
+{
 
   /* USER CODE BEGIN ICACHE_Init 0 */
 
@@ -301,21 +369,24 @@ static void MX_ICACHE_Init(void) {
   /* USER CODE END ICACHE_Init 1 */
 
   /** Enable instruction cache (default 2-ways set associative cache)
-   */
-  if (HAL_ICACHE_Enable() != HAL_OK) {
+  */
+  if (HAL_ICACHE_Enable() != HAL_OK)
+  {
     Error_Handler();
   }
   /* USER CODE BEGIN ICACHE_Init 2 */
 
   /* USER CODE END ICACHE_Init 2 */
+
 }
 
 /**
- * @brief SPI1 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_SPI1_Init(void) {
+  * @brief SPI1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI1_Init(void)
+{
 
   /* USER CODE BEGIN SPI1_Init 0 */
 
@@ -330,47 +401,49 @@ static void MX_SPI1_Init(void) {
   hspi1.Instance = SPI1;
   hspi1.Init.Mode = SPI_MODE_MASTER;
   hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_4BIT;
+  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_HARD_OUTPUT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
   hspi1.Init.CRCPolynomial = 0x7;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi1.Init.NSSPMode = SPI_NSS_PULSE_DISABLE;
   hspi1.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
   hspi1.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
   hspi1.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
   hspi1.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
   hspi1.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
-  hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
+  hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_ENABLE;
   hspi1.Init.IOSwap = SPI_IO_SWAP_DISABLE;
   hspi1.Init.ReadyMasterManagement = SPI_RDY_MASTER_MANAGEMENT_INTERNALLY;
   hspi1.Init.ReadyPolarity = SPI_RDY_POLARITY_HIGH;
-  if (HAL_SPI_Init(&hspi1) != HAL_OK) {
+  if (HAL_SPI_Init(&hspi1) != HAL_OK)
+  {
     Error_Handler();
   }
   HAL_SPI_AutonomousMode_Cfg_Struct.TriggerState = SPI_AUTO_MODE_DISABLE;
-  HAL_SPI_AutonomousMode_Cfg_Struct.TriggerSelection =
-      SPI_GRP1_GPDMA_CH0_TCF_TRG;
+  HAL_SPI_AutonomousMode_Cfg_Struct.TriggerSelection = SPI_GRP1_GPDMA_CH0_TCF_TRG;
   HAL_SPI_AutonomousMode_Cfg_Struct.TriggerPolarity = SPI_TRIG_POLARITY_RISING;
-  if (HAL_SPIEx_SetConfigAutonomousMode(
-          &hspi1, &HAL_SPI_AutonomousMode_Cfg_Struct) != HAL_OK) {
+  if (HAL_SPIEx_SetConfigAutonomousMode(&hspi1, &HAL_SPI_AutonomousMode_Cfg_Struct) != HAL_OK)
+  {
     Error_Handler();
   }
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
 }
 
 /**
- * @brief USB_DRD_FS Initialization Function
- * @param None
- * @retval None
- */
-static void MX_USB_DRD_FS_PCD_Init(void) {
+  * @brief USB_DRD_FS Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USB_DRD_FS_PCD_Init(void)
+{
 
   /* USER CODE BEGIN USB_DRD_FS_Init 0 */
 
@@ -390,20 +463,23 @@ static void MX_USB_DRD_FS_PCD_Init(void) {
   hpcd_USB_DRD_FS.Init.vbus_sensing_enable = DISABLE;
   hpcd_USB_DRD_FS.Init.bulk_doublebuffer_enable = DISABLE;
   hpcd_USB_DRD_FS.Init.iso_singlebuffer_enable = DISABLE;
-  if (HAL_PCD_Init(&hpcd_USB_DRD_FS) != HAL_OK) {
+  if (HAL_PCD_Init(&hpcd_USB_DRD_FS) != HAL_OK)
+  {
     Error_Handler();
   }
   /* USER CODE BEGIN USB_DRD_FS_Init 2 */
 
   /* USER CODE END USB_DRD_FS_Init 2 */
+
 }
 
 /**
- * @brief GPIO Initialization Function
- * @param None
- * @retval None
- */
-static void MX_GPIO_Init(void) {
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
+{
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
 
@@ -436,15 +512,26 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
+/* USBX standalone does its work in ux_system_tasks_run(), so keep it
+ * running while the application waits. */
+void HAL_Delay(uint32_t Delay) {
+  uint32_t start = HAL_GetTick();
+  while (HAL_GetTick() - start < Delay) {
+    if (usb_started) {
+      ux_system_tasks_run();
+    }
+  }
+}
 
 /* USER CODE END 4 */
 
 /**
- * @brief  This function is executed in case of error occurrence.
- * @param None
- * @retval None
- */
-void Error_Handler(void) {
+  * @brief  This function is executed in case of error occurrence.
+  * @param None
+  * @retval None
+  */
+void Error_Handler(void)
+{
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
@@ -454,13 +541,14 @@ void Error_Handler(void) {
 }
 #ifdef USE_FULL_ASSERT
 /**
- * @brief  Reports the name of the source file and the source line number
- *         where the assert_param error has occurred.
- * @param  file: pointer to the source file name
- * @param  line: assert_param error line source number
- * @retval None
- */
-void assert_failed(uint8_t *file, uint32_t line) {
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
+void assert_failed(uint8_t *file, uint32_t line)
+{
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line
      number, ex: printf("Wrong parameters value: file %s on line %d\r\n", file,
