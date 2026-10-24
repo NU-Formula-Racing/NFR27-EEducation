@@ -63,6 +63,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    ./Labs/
     ./Labs/Lab_1/
     ./Labs/Lab_2/
     ./Labs/Lab_3/
