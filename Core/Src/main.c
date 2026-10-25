@@ -23,7 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
-#include "test.h"
+#include "labs.h"
 
 /* USER CODE END Includes */
 
@@ -50,6 +50,8 @@ SMBUS_HandleTypeDef hsmbus1;
 
 SPI_HandleTypeDef hspi1;
 
+TIM_HandleTypeDef htim1;
+
 PCD_HandleTypeDef hpcd_USB_DRD_FS;
 
 /* USER CODE BEGIN PV */
@@ -66,34 +68,14 @@ static void MX_I2C1_SMBUS_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USB_DRD_FS_PCD_Init(void);
 static void MX_ICACHE_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-/* printf -> USB virtual COM port. Drops output if no terminal is open. */
-int _write(int file, char *ptr, int len) {
-  ULONG sent;
-  uint32_t start = HAL_GetTick();
-  (void)file;
 
-  if (cdc_acm == UX_NULL || !cdc_acm->ux_slave_class_cdc_acm_data_dtr_state) {
-    return len;
-  }
-  while (HAL_GetTick() - start < 50) {
-    ux_system_tasks_run();
-    UINT state = ux_device_class_cdc_acm_write_run(cdc_acm, (UCHAR *)ptr, len, &sent);
-    if (state == UX_STATE_NEXT || state < UX_STATE_WAIT) {
-      return len;
-    }
-  }
-  /* Host stopped reading: cancel so the next write starts clean */
-  ux_device_class_cdc_acm_ioctl(cdc_acm, UX_SLAVE_CLASS_CDC_ACM_IOCTL_ABORT_PIPE,
-                                (VOID *)UX_SLAVE_CLASS_CDC_ACM_ENDPOINT_XMIT);
-  cdc_acm->ux_device_class_cdc_acm_write_state = UX_STATE_RESET;
-  return len;
-}
 
 /* USER CODE END 0 */
 
@@ -133,39 +115,19 @@ int main(void)
   MX_USB_DRD_FS_PCD_Init();
   MX_ICACHE_Init();
   MX_USBX_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
-  /* Trim HSI48 to the host's USB SOF; USB needs a tighter clock than HSI48 alone */
-  RCC_CRSInitTypeDef crs = {
-      .Prescaler = RCC_CRS_SYNC_DIV1,
-      .Source = RCC_CRS_SYNC_SOURCE_USB,
-      .Polarity = RCC_CRS_SYNC_POLARITY_RISING,
-      .ReloadValue = __HAL_RCC_CRS_RELOADVALUE_CALCULATE(48000000, 1000),
-      .ErrorLimitValue = RCC_CRS_ERRORLIMIT_DEFAULT,
-      .HSI48CalibrationValue = RCC_CRS_HSI48CALIBRATION_DEFAULT,
-  };
-  __HAL_RCC_CRS_CLK_ENABLE();
-  HAL_RCCEx_CRSConfig(&crs);
 
-  /* USB packet memory per endpoint (BTABLE uses 0x00-0x3F) */
-  HAL_PCDEx_PMAConfig(&hpcd_USB_DRD_FS, 0x00, PCD_SNG_BUF, 0x40);
-  HAL_PCDEx_PMAConfig(&hpcd_USB_DRD_FS, 0x80, PCD_SNG_BUF, 0x80);
-  HAL_PCDEx_PMAConfig(&hpcd_USB_DRD_FS, USBD_CDCACM_EPINCMD_ADDR, PCD_SNG_BUF, 0xC0);
-  HAL_PCDEx_PMAConfig(&hpcd_USB_DRD_FS, USBD_CDCACM_EPOUT_ADDR, PCD_SNG_BUF, 0x100);
-  HAL_PCDEx_PMAConfig(&hpcd_USB_DRD_FS, USBD_CDCACM_EPIN_ADDR, PCD_SNG_BUF, 0x140);
+  lab_1();
+  // lab_2();
+  // lab_3();  
+  // lab_4();  
 
-  /* Hand the USB peripheral to USBX and connect to the host */
-  ux_dcd_stm32_initialize((ULONG)USB_DRD_FS, (ULONG)&hpcd_USB_DRD_FS);
-  HAL_PCD_Start(&hpcd_USB_DRD_FS);
-  usb_started = 1;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1) {
-    test_imu();
-    test_adc();
-    test_can();
-    test_led(); /* toggles the LED, then waits 500 ms */
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -191,21 +153,10 @@ void SystemClock_Config(void)
 
   /** Initializes the CPU, AHB and APB buses clocks
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_MSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
   RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
-  RCC_OscInitStruct.MSIState = RCC_MSI_ON;
-  RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_0;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_MSI;
-  RCC_OscInitStruct.PLL.PLLMBOOST = RCC_PLLMBOOST_DIV4;
-  RCC_OscInitStruct.PLL.PLLM = 3;
-  RCC_OscInitStruct.PLL.PLLN = 8;
-  RCC_OscInitStruct.PLL.PLLP = 2;
-  RCC_OscInitStruct.PLL.PLLQ = 1;
-  RCC_OscInitStruct.PLL.PLLR = 2;
-  RCC_OscInitStruct.PLL.PLLRGE = RCC_PLLVCIRANGE_1;
-  RCC_OscInitStruct.PLL.PLLFRACN = 0;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -216,13 +167,13 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2
                               |RCC_CLOCKTYPE_PCLK3;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_MSI;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSE;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB3CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
   {
     Error_Handler();
   }
@@ -316,7 +267,7 @@ static void MX_I2C1_SMBUS_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hsmbus1.Instance = I2C1;
-  hsmbus1.Init.Timing = 0x20303E5D;
+  hsmbus1.Init.Timing = 0x2000090E;
   hsmbus1.Init.AnalogFilter = SMBUS_ANALOGFILTER_ENABLE;
   hsmbus1.Init.OwnAddress1 = 2;
   hsmbus1.Init.AddressingMode = SMBUS_ADDRESSINGMODE_7BIT;
@@ -327,7 +278,7 @@ static void MX_I2C1_SMBUS_Init(void)
   hsmbus1.Init.NoStretchMode = SMBUS_NOSTRETCH_DISABLE;
   hsmbus1.Init.PacketErrorCheckMode = SMBUS_PEC_DISABLE;
   hsmbus1.Init.PeripheralMode = SMBUS_PERIPHERAL_MODE_SMBUS_SLAVE;
-  hsmbus1.Init.SMBusTimeout = 0x00008249;
+  hsmbus1.Init.SMBusTimeout = 0x00008061;
   if (HAL_SMBUS_Init(&hsmbus1) != HAL_OK)
   {
     Error_Handler();
@@ -434,6 +385,53 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 999;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 7999;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
 
 }
 
