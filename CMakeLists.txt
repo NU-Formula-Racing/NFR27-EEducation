@@ -47,17 +47,10 @@ file(GLOB_RECURSE LAB_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_SOURCE_DIR}/Labs/*.c
 )
 
-# USBX STM32 device controller driver (not added by CubeMX's CMake generator)
-file(GLOB USBX_DCD_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/Middlewares/ST/usbx/common/usbx_stm32_device_controllers/ux_dcd_stm32*.c
-)
-list(FILTER USBX_DCD_SOURCES EXCLUDE REGEX " [0-9]+\\.c$")
-
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     ${LAB_SOURCES}
-    ${USBX_DCD_SOURCES}
 )
 
 # Add include paths
@@ -68,7 +61,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ./Labs/Lab_2/
     ./Labs/Lab_3/
     ./Labs/Lab_4/
-    ./Labs/Test/
+    ./c-fsm/
 )
 
 # Add project symbols (macros)
@@ -84,4 +77,5 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
 
     # Add user defined libraries
+    m # libm, for atan2f/sqrtf in labs 2 and 3
 )

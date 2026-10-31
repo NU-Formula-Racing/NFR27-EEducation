@@ -5,9 +5,9 @@ Firmware for the NFR electrical education board (STM32U535CCU). The project is g
 | path | what it is |
 | --- | --- |
 | `Core/` | CubeMX-generated startup, `main.c`, peripheral init |
-| `Labs/` | lab code, one folder per lab (`Lab_1` ... `Lab_4`, `Test`) |
+| `Labs/` | lab code, one folder per lab (`Lab_1` ... `Lab_4`) |
 | `c-fsm/` | [c-fsm](https://github.com/Evan-Bertis-Sample/c-fsm) git submodule, single-header finite state machine library |
-| `Drivers/`, `Middlewares/`, `USBX/` | ST HAL, CMSIS, and USBX (generated, don't edit) |
+| `Drivers/` | ST HAL and CMSIS (generated, don't edit) |
 | `cmake/` | toolchain files and CubeMX-generated CMake |
 | `eeducation.ioc` | CubeMX project (pinout, clocks, peripherals) |
 
@@ -19,7 +19,7 @@ Firmware for the NFR electrical education board (STM32U535CCU). The project is g
 - [stm32cube programmer](https://www.st.com/en/development-tools/stm32cubeprog.html) (optional, only needed for flashing without vscode or if the board needs a full chip erase)
 - [stm32cubemx](https://www.st.com/en/development-tools/stm32cubemx.html) (optional, only needed to change `eeducation.ioc`)
 
-You don't need to install cmake, ninja, or the arm compiler yourself, the vscode extension downloads them.
+The vscode extension installs cmake, ninja, and the arm compiler.
 
 On Windows, the ST-LINK USB driver comes with stm32cube programmer. If the ST-LINK isn't detected, install [ST-LINK driver](https://www.st.com/en/development-tools/stsw-link009.html).
 
@@ -43,7 +43,7 @@ git submodule update --init --recursive
 - connect stlink to your laptop, make sure the blue light on the stlink is active
 
 ## Pick a lab
-There are four labs, one per piece of hardware: LED, IMU, ADC and CAN. Start with the [labs overview](Labs/README.md), which links each lab's handout.
+There are four labs, one per piece of hardware: LED, IMU, ADC and CAN. Start with the [labs overview](Labs/README.md), which links each lab's handout. Without a board, the same lab code runs on the [simulator](Labs/README.md#simulator).
 
 Labs live in `Labs/Lab_N/`. Choose which one runs by uncommenting its call in `Core/Src/main.c` (only one at a time), then pick the part with `#define LAB_N_PART` at the top of `Labs/Lab_N/lab_N.c`:
 ```c
@@ -55,7 +55,7 @@ Labs live in `Labs/Lab_N/`. Choose which one runs by uncommenting its call in `C
 ```
 - any new `.c` files you add under `Labs/` are picked up by the build automatically (you may need to re-run `CMake: Configure` for them to show up)
 - if you add a new header, include it in `Labs/labs.h`
-- `Labs/Lab_1` ... `Labs/Lab_4` and `Labs/Test` are already on the include path. If you make a new folder, add it to `target_include_directories` in `CMakeLists.txt`
+- `Labs/Lab_1` ... `Labs/Lab_4` are already on the include path. If you make a new folder, add it to `target_include_directories` in `CMakeLists.txt`
 
 ## Building and flashing in vscode
 ### First time setup
@@ -88,7 +88,7 @@ Labs live in `Labs/Lab_N/`. Choose which one runs by uncommenting its call in `C
 The program stays flashed after you stop debugging. Unplug and replug the board (or press reset) and it runs on its own.
 
 ### Flashing without the debugger (stm32cube programmer)
-Useful if you just want to load a build, or if the debugger can't connect.
+Use this to load a build without debugging, or when the debugger can't connect.
 
 GUI:
 1. open stm32cube programmer, select **ST-LINK** on the right, then **Connect**
@@ -107,9 +107,9 @@ STM32_Programmer_CLI -c port=SWD -w build/Debug/eeducation.elf -v -rst
 #define FSM_IMPL
 #include "fsm.h"
 ```
-Every other file just does `#include "fsm.h"`. See `c-fsm/README.md` and `c-fsm/examples/` for usage.
+Other files only `#include "fsm.h"`. See `c-fsm/README.md` and `c-fsm/examples/` for usage.
 
-Don't edit files inside `c-fsm/`, changes there belong to the upstream repo, not this one.
+Don't edit `c-fsm/`, it belongs to the upstream repo.
 
 ## Changing the hardware config (CubeMX)
 Pins, clocks, and peripherals are set in `eeducation.ioc`. To change them, open it in stm32cubemx (or from the stm32cube extension) and regenerate code.

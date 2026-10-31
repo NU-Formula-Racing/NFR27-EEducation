@@ -59,8 +59,3 @@ compile_commands.json
 ehthumbs.db
 Thumbs.db
 
-# Python
-launch-control-testing/venv/
-launch-control-testing/*.csv
-launch-control-testing/*.png
-
