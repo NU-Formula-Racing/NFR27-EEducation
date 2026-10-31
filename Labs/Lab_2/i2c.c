@@ -1,14 +1,14 @@
 #include "i2c.h"
 #include "main.h"
 
-// CubeMX set I2C1 up as an SMBus peripheral, and the SMBus HAL only has
-// interrupt-driven transfers (and no I2C1 interrupt is enabled), so these
-// functions drive the I2C registers directly. Pin and timing setup still come
-// from CubeMX. Register names are from the I2C chapter of RM0456.
+// These functions drive the I2C registers directly so each step of a
+// transaction is visible. HAL_I2C_Mem_Read/Write do the same thing. Pin and
+// timing setup come from CubeMX. Register names are from the I2C chapter of
+// RM0456.
 
-extern SMBUS_HandleTypeDef hsmbus1;
+extern I2C_HandleTypeDef hi2c1;
 
-#define I2C (hsmbus1.Instance)
+#define I2C (hi2c1.Instance)
 #define I2C_TIMEOUT_MS 5
 
 #define I2C_WRITE 0
@@ -60,11 +60,6 @@ static int i2c_wait_for_stop(void) {
   }
   I2C->ICR = I2C_ICR_STOPCF;
   return 0;
-}
-
-void i2c_init(void) {
-  // CubeMX enabled the SMBus alert output, which holds SMBA (PB5) low
-  I2C->CR1 &= ~I2C_CR1_ALERTEN;
 }
 
 int i2c_probe(uint8_t addr) {

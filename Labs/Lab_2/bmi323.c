@@ -69,8 +69,6 @@ static int bmi323_find(void) {
 int bmi323_init(void) {
   uint16_t err = 0;
 
-  i2c_init();
-
   if (bmi323_find() != 0) {
     return -1;
   }

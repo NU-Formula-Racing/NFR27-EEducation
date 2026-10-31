@@ -11,9 +11,6 @@
 // Every function returns 0 on success and -1 if the device didn't answer
 // (NACK) or the bus timed out.
 
-// Call once before anything else
-void i2c_init(void);
-
 // Sends just the address and checks if any device ACKs it
 int i2c_probe(uint8_t addr);
 

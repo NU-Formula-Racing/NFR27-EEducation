@@ -9,7 +9,6 @@ Read the BMI323 IMU (accelerometer + gyroscope) over I2C, convert to real units,
 | --- | --- | --- |
 | I2C1 SCL | PB6 | clock |
 | I2C1 SDA | PB7 | data |
-| I2C1 SMBA | PB5 | SMBus alert, not used. `i2c_init()` turns it off. |
 
 The BMI323 (U4) answers at 7-bit address **0x68** or **0x69** depending on its SDO pin. Part 1 finds which.
 

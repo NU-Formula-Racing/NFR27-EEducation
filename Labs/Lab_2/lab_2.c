@@ -21,7 +21,6 @@ float lab_2_roll, lab_2_pitch;
 
 // Probes every valid 7-bit address and records the ones that ACK
 static void scan_bus(void) {
-  i2c_init();
   lab_2_found_count = 0;
 
   // TODO (part 1): valid 7-bit addresses go from 0x08 to 0x77. Probe each
@@ -34,7 +33,6 @@ static void scan_bus(void) {
 // ---------------------------------------------------------------- part 2
 
 static void read_chip_id(void) {
-  i2c_init();
   // TODO (part 2): use the address part 1 found
   bmi323_addr = 0;
 
